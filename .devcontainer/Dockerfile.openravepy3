@@ -1,0 +1,135 @@
+#syntax=docker/dockerfile:1.2
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+MAINTAINER Shohei Fujii
+
+COPY --from=materialize/sccache:latest /usr/local/bin/sccache /usr/local/bin/sccache
+# see https://github.com/moby/buildkit/blob/master/frontend/dockerfile/docs/syntax.md
+RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+
+# Install core linux tools
+# https://gitlab.com/nvidia/container-images/opengl/blob/ubuntu18.04/glvnd/devel/Dockerfile
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        pkg-config \
+        libglvnd-dev  \
+        libgl1-mesa-dev \
+        libegl1-mesa-dev \
+        libgles2-mesa-dev \
+        apt-transport-https \
+        ca-certificates \
+        dbus \
+        fontconfig \
+        gnupg \
+        libasound2 \
+        libfreetype6 \
+        libglib2.0-0 \
+        libnss3 \
+        libsqlite3-0 \
+        libx11-xcb1 \
+        libxcb-glx0 \
+        libxcb-xkb1 \
+        libxcomposite1 \
+        libxcursor1 \
+        libxdamage1 \
+        libxi6 \
+        libxml2 \
+        libxrandr2 \
+        libxrender1 \
+        libxtst6 \
+        openssh-client \
+        wget \
+        xcb \
+        xkb-data
+
+# Install ROS
+ENV ROS_DISTRO noetic
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt DEBIAN_FRONTEND=noninteractive apt install --no-install-recommends -q -y curl lsb-release
+RUN echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list
+RUN apt-key adv --keyserver 'hkp://keyserver.ubuntu.com:80' --recv-key C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654
+RUN curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add -
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt update && DEBIAN_FRONTEND=noninteractive apt install --no-install-recommends -q -y \
+    ros-${ROS_DISTRO}-ros-core \
+    python3-rosdep \
+    python3-rosinstall \
+    python3-vcstools \
+    python3-catkin-tools \
+    python3-wstool \
+    build-essential
+
+RUN rosdep init
+
+# Install programs
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt update && apt install -y --no-install-recommends build-essential cmake doxygen \
+	g++ git ipython3 octave python3-dev python3-h5py python3-numpy python3-pip python3-scipy \
+	python3-setuptools python3-wheel wget mlocate qt5-default minizip
+
+# Install libraries
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt update && apt install -y --no-install-recommends ann-tools libann-dev \
+	libassimp-dev libavcodec-dev libavformat-dev libeigen3-dev libfaac-dev \
+	libflann-dev libfreetype6-dev liblapack-dev libglew-dev libgsm1-dev \
+	libmpfi-dev  libmpfr-dev liboctave-dev libode-dev libogg-dev libpcre3-dev \
+	libqhull-dev libsoqt520-dev libswscale-dev libtinyxml-dev \
+	libvorbis-dev libx264-dev libxml2-dev libxvidcore-dev libbz2-dev \
+	libccd-dev libcollada-dom2.4-dp-dev liblog4cxx-dev libminizip-dev octomap-tools
+# libsoqt4-dev 
+# Install boost
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt update && apt install -y --no-install-recommends libboost-all-dev \
+	libboost-python-dev
+
+# Install OSG - OpenSceneGraph
+ARG OSG_COMMIT=1f89e6eb1087add6cd9c743ab07a5bce53b2f480
+RUN mkdir /3rdparty
+RUN cd /3rdparty && git clone https://github.com/openscenegraph/OpenSceneGraph.git
+RUN cd /3rdparty/OpenSceneGraph; git reset --hard ${OSG_COMMIT}
+RUN mkdir /3rdparty/OpenSceneGraph/build && cd /3rdparty/OpenSceneGraph/build \
+	&& cmake -DDESIRED_QT_VERSION=4 -DCMAKE_BUILD_TYPE=Release .. -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache  && make -j$(nproc) && make install \
+	&& make install_ld_conf && rm -rf *
+
+# Install FCL - The Flexible Collision Library
+RUN cd /3rdparty && git clone https://github.com/flexible-collision-library/fcl && cd fcl && git reset --hard 0.5.0
+RUN mkdir /3rdparty/fcl/build && cd /3rdparty/fcl/build && cmake -DCMAKE_BUILD_TYPE=Release .. -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache  \
+	&& make -j$(nproc) && make install && rm * -rf
+
+
+# Git credentials, needed for later step
+RUN git config --global user.name "test" && git config --global user.email "test"
+
+# Install RapidJSON
+RUN cd /3rdparty && git clone https://github.com/Tencent/rapidjson.git
+RUN mkdir /3rdparty/rapidjson/build && cd /3rdparty/rapidjson/build \
+	&& cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache  .. && make -j${nproc} && make install && rm -rf *
+
+# Install Pybind
+RUN cd /3rdparty && git clone https://github.com/pybind/pybind11.git
+RUN mkdir /3rdparty/pybind11/build && cd /3rdparty/pybind11/build \
+	&& git remote add woody https://github.com/woodychow/pybind11.git \
+    && git remote add cielavenir https://github.com/cielavenir/pybind11.git \
+    && git fetch woody && git fetch cielavenir && git checkout v2.2.4 \
+    && git cherry-pick 94824d68a037d99253b92a5b260bb04907c42355 \
+    && git cherry-pick 98c9f77e5481af4cbc7eb092e1866151461e3508 \
+    && git cherry-pick dae2d434bd806eac67e38f3c49cfc91f46e4fd88 \
+    && git cherry-pick 2e08ce9ba75f5a2d87a6f12e6ab657ac78444e8e \
+    && cmake .. -DPYBIND11_TEST=OFF -DCMAKE_BUILD_TYPE=Release \
+    && make install && rm * -rf
+# RUN --mount=type=cache,target=/root/.cache/sccache/ cd /3rdparty && git clone https://github.com/pybind/pybind11.git \
+# 	&& mkdir /3rdparty/pybind11/build && cd /3rdparty/pybind11/build \
+#     && git checkout v2.9.2 \
+#     && cmake .. -DPYBIND11_TEST=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache  \
+#     && make install \
+# 	&& rm * -rf
+
+# Install OpenRAVE - Open Robotics Virtual Environment
+ARG RAVE_COMMIT=ffde2c35c
+ARG USE_PYBIND=TRUE
+RUN cd /3rdparty && git clone -b production https://github.com/rdiankov/openrave.git
+RUN cd /3rdparty/openrave && git reset --hard ${RAVE_COMMIT}
+# Downgrade Sympy
+# see also https://github.com/rdiankov/openrave/issues/410
+RUN --mount=type=cache,target=/root/.cache/pip pip3 install sympy==0.7.4 PyOpenGL
+RUN cd /3rdparty/openrave && curl https://patch-diff.githubusercontent.com/raw/rdiankov/openrave/pull/1146.patch | patch -p1
+RUN mkdir -p /build_openrave && cd /build_openrave \
+    && cmake -DODE_USE_MULTITHREAD=ON -DOSG_DIR=/usr/local/lib64/ -DBoost_NO_BOOST_CMAKE=1 \
+    -DUSE_PYBIND11_PYTHON_BINDINGS:BOOL=${USE_PYBIND} -DOPT_LOG4CXX=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_DIR=/usr/local /3rdparty/openrave -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache  \
+    && make -j$(nproc) && make install
+RUN mv /usr/local/lib/python3/dist-packages/openravepy* /usr/local/lib/python$(python3 --version |cut -d ' ' -f 2|cud -d '.' -f 1,2)/dist-packages/
+RUN cd /usr/local/lib/python$(python3 --version |cut -d ' ' -f 2|cud -d '.' -f 1,2)/dist-packages/ && ln -sf _openravepy_0* _openravepy_
+
