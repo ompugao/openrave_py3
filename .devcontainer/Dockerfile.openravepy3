@@ -130,6 +130,6 @@ RUN mkdir -p /build_openrave && cd /build_openrave \
     && cmake -DODE_USE_MULTITHREAD=ON -DOSG_DIR=/usr/local/lib64/ -DBoost_NO_BOOST_CMAKE=1 \
     -DUSE_PYBIND11_PYTHON_BINDINGS:BOOL=${USE_PYBIND} -DOPT_LOG4CXX=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_DIR=/usr/local /3rdparty/openrave -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache  \
     && make -j$(nproc) && make install
-RUN mv /usr/local/lib/python3/dist-packages/openravepy* /usr/local/lib/python$(python3 --version |cut -d ' ' -f 2|cud -d '.' -f 1,2)/dist-packages/
-RUN cd /usr/local/lib/python$(python3 --version |cut -d ' ' -f 2|cud -d '.' -f 1,2)/dist-packages/ && ln -sf _openravepy_0* _openravepy_
+RUN mv /usr/local/lib/python3/dist-packages/openravepy* /usr/local/lib/python$(python3 --version |cut -d ' ' -f 2|cut -d '.' -f 1,2)/dist-packages/
+RUN cd /usr/local/lib/python$(python3 --version |cut -d ' ' -f 2|cut -d '.' -f 1,2)/dist-packages/ && ln -sf _openravepy_0* _openravepy_
 
