@@ -1,0 +1,6 @@
+[submodule "common_pkgs/openrave_catkin"]
+	path = common_pkgs/openrave_catkin
+	url = https://github.com/personalrobotics/openrave_catkin
+[submodule "common_pkgs/or_trac_ik"]
+	path = common_pkgs/or_trac_ik
+	url = https://github.com/ompugao/or_trac_ik

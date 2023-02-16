@@ -131,5 +131,27 @@ RUN mkdir -p /build_openrave && cd /build_openrave \
     -DUSE_PYBIND11_PYTHON_BINDINGS:BOOL=${USE_PYBIND} -DOPT_LOG4CXX=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_DIR=/usr/local /3rdparty/openrave -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache  \
     && make -j$(nproc) && make install
 RUN mv /usr/local/lib/python3/dist-packages/openravepy* /usr/local/lib/python$(python3 --version |cut -d ' ' -f 2|cut -d '.' -f 1,2)/dist-packages/
-RUN cd /usr/local/lib/python$(python3 --version |cut -d ' ' -f 2|cut -d '.' -f 1,2)/dist-packages/ && ln -sf _openravepy_0* _openravepy_
+RUN cd /usr/local/lib/python$(python3 --version |cut -d ' ' -f 2|cut -d '.' -f 1,2)/dist-packages/openravepy && ln -sf _openravepy_0* _openravepy_
 
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ros-noetic-trac-ik-lib libnlopt-cxx-dev
+
+RUN rosdep update
+
+RUN --mount=type=cache,target=/root/.cache/pip pip3 install -U rosdep rosinstall_generator rosinstall vcstool 
+RUN mkdir -p ~/ros_catkin_ws/common_pkgs
+COPY common_pkgs /root/ros_catkin_ws/common_pkgs/src
+# RUN cd /root/ros_catkin_ws/common_pkgs && rosdep install --from-paths src --ignore-src -r -y
+RUN --mount=type=cache,target=/root/.cache/sccache/ \
+	mkdir -p ~/ros_catkin_ws/common_pkgs_deps/src && cd ~/ros_catkin_ws/common_pkgs_deps \
+	&& . /opt/ros/${ROS_DISTRO}/setup.sh \
+	&& rosdep keys --ignore-packages-from-source --from-paths ~/ros_catkin_ws/common_pkgs|grep -v boost|grep -v matplotlib|grep -v ^openrave$|awk '{print}' ORS=' '|xargs rosinstall_generator --rosdistro $ROS_DISTRO --exclude $(rospack list|awk '{print $1}' ORS=' ') --tar --deps > .rosinstall \
+	&& vcs import src < .rosinstall \
+	&& catkin_make_isolated -j `nproc` --install -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCATKIN_ENABLE_TESTING=OFF \
+	&& rm -rf build_isolated
+
+# RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt apt update && apt -y install libvtk7-dev
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt --mount=type=cache,target=/root/.cache/sccache/ \
+	cd ~/ros_catkin_ws/common_pkgs \
+	&& . ~/ros_catkin_ws/common_pkgs_deps/install_isolated/setup.sh \
+	&& catkin build --verbose --no-status -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+	&& rm build logs -rf
