@@ -126,6 +126,8 @@ RUN cd /3rdparty/openrave && git reset --hard ${RAVE_COMMIT}
 # see also https://github.com/rdiankov/openrave/issues/410
 RUN --mount=type=cache,target=/root/.cache/pip pip3 install sympy==0.7.4 PyOpenGL
 RUN cd /3rdparty/openrave && curl https://patch-diff.githubusercontent.com/raw/rdiankov/openrave/pull/1146.patch | patch -p1
+RUN cd /3rdparty/openrave && curl https://patch-diff.githubusercontent.com/raw/rdiankov/openrave/pull/1145.patch |patch -p1
+
 RUN mkdir -p /build_openrave && cd /build_openrave \
     && cmake -DODE_USE_MULTITHREAD=ON -DOSG_DIR=/usr/local/lib64/ -DBoost_NO_BOOST_CMAKE=1 \
     -DUSE_PYBIND11_PYTHON_BINDINGS:BOOL=${USE_PYBIND} -DOPT_LOG4CXX=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_DIR=/usr/local /3rdparty/openrave -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache  \
