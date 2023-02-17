@@ -157,3 +157,8 @@ RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/
 	&& . ~/ros_catkin_ws/common_pkgs_deps/install_isolated/setup.sh \
 	&& catkin build --verbose --no-status -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
 	&& rm build logs -rf
+
+COPY .devcontainer/entrypoint.sh /entrypoint.sh
+COPY .devcontainer/.bashrc /root/.bashrc
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]
